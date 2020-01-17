@@ -95,10 +95,12 @@ func (s LineString) appendWKTBody(dst []byte) []byte {
 		dst = appendFloat(dst, ln.a.Y)
 		dst = append(dst, ',')
 	}
-	last := s.lines[len(s.lines)-1].b
-	dst = appendFloat(dst, last.X)
-	dst = append(dst, ' ')
-	dst = appendFloat(dst, last.Y)
+	if len(s.lines) > 0 {
+		last := s.lines[len(s.lines)-1].b
+		dst = appendFloat(dst, last.X)
+		dst = append(dst, ' ')
+		dst = appendFloat(dst, last.Y)
+	}
 	return append(dst, ')')
 }
 
