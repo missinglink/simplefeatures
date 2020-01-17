@@ -53,12 +53,26 @@ func generatePoints(rnd *rand.Rand, count int) {
 
 func generateLines(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		fmt.Println(generate.RandomLineWKT(rnd))
+		wkt := generate.ForceDistribution(
+			rnd, generate.RandomLineWKT,
+			[]generate.WeightedPredicate{
+				{Weight: 9, Predicate: generate.WKTIsValidGeometry},
+				{Weight: 1, Predicate: generate.WKTIsInvalidGeometry},
+			},
+		)
+		fmt.Println(wkt)
 	}
 }
 
 func generateLineStrings(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		fmt.Println(generate.RandomLineStringWKT(rnd))
+		wkt := generate.ForceDistribution(
+			rnd, generate.RandomLineStringWKT,
+			[]generate.WeightedPredicate{
+				{Weight: 1, Predicate: generate.WKTIsInvalidGeometry},
+				{Weight: 1, Predicate: generate.AlwaysTrue},
+			},
+		)
+		fmt.Println(wkt)
 	}
 }

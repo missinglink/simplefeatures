@@ -2,24 +2,11 @@ package generate
 
 import (
 	"math/rand"
+	"sort"
+	"strings"
 
 	"github.com/peterstace/simplefeatures/geom"
 )
-
-/*
-func ValidityMix(rnd *rand.Rand, invalidRatio float64, gen WKTGenerator) WKTGenerator {
-	return WKTGenerator(func() string {
-		wantValid := rand.Float64() > invalidRatio
-		for {
-			wkt := gen()
-			_, err := geom.UnmarshalWKT(strings.NewReader(wkt))
-			if (err == nil) == wantValid {
-				return wkt
-			}
-		}
-	})
-}
-*/
 
 func RandomXYOnGrid(rnd *rand.Rand, min, max int) geom.XY {
 	x := rnd.Intn(max-min) + min
@@ -65,5 +52,42 @@ func RandomLineStringWKT(rnd *rand.Rand) string {
 			Y: float64(rnd.Intn(10) - 5),
 		})
 		coords = append(coords, last)
+	}
+}
+
+func WKTIsValidGeometry(wkt string) bool {
+	_, err := geom.UnmarshalWKT(strings.NewReader(wkt))
+	return err == nil
+}
+
+func WKTIsInvalidGeometry(wkt string) bool {
+	return !WKTIsValidGeometry(wkt)
+}
+
+func AlwaysTrue(wkt string) bool {
+	return true
+}
+
+type WeightedPredicate struct {
+	Weight    float64
+	Predicate func(wkt string) bool
+}
+
+func ForceDistribution(rnd *rand.Rand, wktGenerator func(*rand.Rand) string, predicates []WeightedPredicate) string {
+	cumulative := make([]float64, len(predicates))
+	for i, wp := range predicates {
+		cumulative[i] = wp.Weight
+		if i != 0 {
+			cumulative[i] += cumulative[i-1]
+		}
+	}
+	idx := sort.SearchFloat64s(
+		cumulative,
+		rnd.Float64()*cumulative[len(cumulative)-1],
+	)
+	for {
+		if wkt := wktGenerator(rnd); predicates[idx].Predicate(wkt) {
+			return wkt
+		}
 	}
 }
