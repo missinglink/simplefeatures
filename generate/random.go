@@ -36,22 +36,38 @@ func RandomLineWKT(rnd *rand.Rand) string {
 	return ln.AsText()
 }
 
-func RandomLineStringWKT(rnd *rand.Rand) string {
-	last := geom.XY{
-		X: float64(rnd.Intn(100) - 50),
-		Y: float64(rnd.Intn(100) - 50),
+type LineStringSpec struct {
+	NumPoints int
+	IsClosed  bool
+	IsSimple  bool
+}
+
+func RandomLineString(rnd *rand.Rand, spec LineStringSpec) geom.LineString {
+	if spec.IsClosed {
+		spec.NumPoints--
 	}
-	coords := []geom.XY{last}
 	for {
-		if rnd.Float64() < 0.1 {
-			ls, _ := geom.NewLineStringXY(coords, geom.DisableAllValidations)
-			return ls.AsText()
+		last := geom.XY{
+			X: float64(rnd.Intn(100) - 50),
+			Y: float64(rnd.Intn(100) - 50),
 		}
-		last = last.Add(geom.XY{
-			X: float64(rnd.Intn(10) - 5),
-			Y: float64(rnd.Intn(10) - 5),
-		})
-		coords = append(coords, last)
+		var coords []geom.XY
+		for i := 0; i < spec.NumPoints; i++ {
+			coords = append(coords, last)
+			last = last.Add(geom.XY{
+				X: float64(rnd.Intn(10) - 5),
+				Y: float64(rnd.Intn(10) - 5),
+			})
+		}
+		if spec.IsClosed {
+			coords = append(coords, coords[0])
+		}
+		ls, err := geom.NewLineStringXY(coords)
+		if err == nil &&
+			ls.IsSimple() == spec.IsSimple &&
+			ls.IsClosed() == spec.IsClosed {
+			return ls
+		}
 	}
 }
 
@@ -74,6 +90,7 @@ type WeightedPredicate struct {
 }
 
 func ForceDistribution(rnd *rand.Rand, wktGenerator func(*rand.Rand) string, predicates []WeightedPredicate) string {
+	// TODO: make unique
 	cumulative := make([]float64, len(predicates))
 	for i, wp := range predicates {
 		cumulative[i] = wp.Weight

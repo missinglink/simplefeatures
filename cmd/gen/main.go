@@ -66,13 +66,11 @@ func generateLines(rnd *rand.Rand, count int) {
 
 func generateLineStrings(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		wkt := generate.ForceDistribution(
-			rnd, generate.RandomLineStringWKT,
-			[]generate.WeightedPredicate{
-				{Weight: 1, Predicate: generate.WKTIsInvalidGeometry},
-				{Weight: 1, Predicate: generate.AlwaysTrue},
-			},
-		)
-		fmt.Println(wkt)
+		ls := generate.RandomLineString(rnd, generate.LineStringSpec{
+			NumPoints: 60,
+			IsClosed:  true,
+			IsSimple:  true,
+		})
+		fmt.Println(ls.AsText())
 	}
 }
