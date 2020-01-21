@@ -31,7 +31,7 @@ func main() {
 	case "linestring":
 		generateLineStrings(rnd, *count)
 	case "polygon":
-		fallthrough
+		generatePolygons(rnd, *count)
 	case "multipoint":
 		fallthrough
 	case "multilinestring":
@@ -47,30 +47,33 @@ func main() {
 
 func generatePoints(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		fmt.Println(generate.RandomPointWKT(rnd))
+		fmt.Println(generate.RandomPoint(rnd).AsText())
 	}
 }
 
 func generateLines(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		wkt := generate.ForceDistribution(
-			rnd, generate.RandomLineWKT,
-			[]generate.WeightedPredicate{
-				{Weight: 9, Predicate: generate.WKTIsValidGeometry},
-				{Weight: 1, Predicate: generate.WKTIsInvalidGeometry},
-			},
-		)
-		fmt.Println(wkt)
+		fmt.Println(generate.RandomLine(rnd).AsText())
 	}
 }
 
 func generateLineStrings(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		ls := generate.RandomLineString(rnd, generate.LineStringSpec{
-			NumPoints: 60,
+		ls := generate.RandomLineStringRandomWalk(rnd, generate.LineStringSpec{
+			NumPoints: 50,
 			IsClosed:  true,
 			IsSimple:  true,
 		})
 		fmt.Println(ls.AsText())
+	}
+}
+
+func generatePolygons(rnd *rand.Rand, count int) {
+	for i := 0; i < count; i++ {
+		wkt := generate.RandomPolygon(rnd, generate.PolygonSpec{
+			Valid:      true,
+			RingPoints: []int{20, 10},
+		})
+		fmt.Println(wkt)
 	}
 }

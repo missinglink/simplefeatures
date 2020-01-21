@@ -2,8 +2,6 @@ package generate
 
 import (
 	"math/rand"
-	"sort"
-	"strings"
 
 	"github.com/peterstace/simplefeatures/geom"
 )
@@ -17,23 +15,21 @@ func RandomXYOnGrid(rnd *rand.Rand, min, max int) geom.XY {
 	}
 }
 
-func RandomPointWKT(rnd *rand.Rand) string {
-	return geom.NewPointXY(
-		RandomXYOnGrid(rnd, 0, 10),
-		geom.DisableAllValidations,
-	).AsText()
+func RandomPoint(rnd *rand.Rand) geom.Point {
+	xy := RandomXYOnGrid(rnd, 0, 10)
+	return geom.NewPointXY(xy)
 }
 
-func RandomLineWKT(rnd *rand.Rand) string {
-	ln, err := geom.NewLineXY(
-		RandomXYOnGrid(rnd, 0, 10),
-		RandomXYOnGrid(rnd, 0, 10),
-		geom.DisableAllValidations,
-	)
-	if err != nil {
-		panic(err)
+func RandomLine(rnd *rand.Rand) geom.Line {
+	for {
+		ln, err := geom.NewLineXY(
+			RandomXYOnGrid(rnd, 0, 10),
+			RandomXYOnGrid(rnd, 0, 10),
+		)
+		if err == nil {
+			return ln
+		}
 	}
-	return ln.AsText()
 }
 
 type LineStringSpec struct {
@@ -42,7 +38,7 @@ type LineStringSpec struct {
 	IsSimple  bool
 }
 
-func RandomLineString(rnd *rand.Rand, spec LineStringSpec) geom.LineString {
+func RandomLineStringRandomWalk(rnd *rand.Rand, spec LineStringSpec) geom.LineString {
 	if spec.IsClosed {
 		spec.NumPoints--
 	}
@@ -55,8 +51,8 @@ func RandomLineString(rnd *rand.Rand, spec LineStringSpec) geom.LineString {
 		for i := 0; i < spec.NumPoints; i++ {
 			coords = append(coords, last)
 			last = last.Add(geom.XY{
-				X: float64(rnd.Intn(10) - 5),
-				Y: float64(rnd.Intn(10) - 5),
+				X: float64(rnd.Intn(7) - 3),
+				Y: float64(rnd.Intn(7) - 3),
 			})
 		}
 		if spec.IsClosed {
@@ -71,40 +67,35 @@ func RandomLineString(rnd *rand.Rand, spec LineStringSpec) geom.LineString {
 	}
 }
 
-func WKTIsValidGeometry(wkt string) bool {
-	_, err := geom.UnmarshalWKT(strings.NewReader(wkt))
-	return err == nil
+type PolygonSpec struct {
+	Valid      bool
+	RingPoints []int
 }
 
-func WKTIsInvalidGeometry(wkt string) bool {
-	return !WKTIsValidGeometry(wkt)
-}
+// TODO: This is pretty slow even for modest sized polygons. Idea: create a
+// circle, then distort it using perlin noise. We can then choose a center and
+// radius of the circle that makes it easier for the RNG to build a valid
+// polygon.
 
-func AlwaysTrue(wkt string) bool {
-	return true
-}
-
-type WeightedPredicate struct {
-	Weight    float64
-	Predicate func(wkt string) bool
-}
-
-func ForceDistribution(rnd *rand.Rand, wktGenerator func(*rand.Rand) string, predicates []WeightedPredicate) string {
-	// TODO: make unique
-	cumulative := make([]float64, len(predicates))
-	for i, wp := range predicates {
-		cumulative[i] = wp.Weight
-		if i != 0 {
-			cumulative[i] += cumulative[i-1]
-		}
+func RandomPolygon(rnd *rand.Rand, spec PolygonSpec) string {
+	if len(spec.RingPoints) == 0 {
+		panic("bad spec: polygon must have at least 1 ring")
 	}
-	idx := sort.SearchFloat64s(
-		cumulative,
-		rnd.Float64()*cumulative[len(cumulative)-1],
-	)
 	for {
-		if wkt := wktGenerator(rnd); predicates[idx].Predicate(wkt) {
-			return wkt
+		rings := make([]geom.LineString, len(spec.RingPoints))
+		for i, pts := range spec.RingPoints {
+			rings[i] = RandomLineStringRandomWalk(rnd, LineStringSpec{
+				NumPoints: pts,
+				IsClosed:  true,
+				IsSimple:  true,
+			})
+		}
+		poly, err := geom.NewPolygon(rings[0], rings[1:])
+		if err == nil && spec.Valid {
+			return poly.AsText()
+		} else if err != nil && !spec.Valid {
+			poly, _ = geom.NewPolygon(rings[0], rings[1:], geom.DisableAllValidations)
+			return poly.AsText()
 		}
 	}
 }
