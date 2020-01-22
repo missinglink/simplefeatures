@@ -10,27 +10,26 @@ import (
 type PerlinGenerator struct {
 	env       geom.Envelope
 	gradients [][]geom.XY
+	originX   int
+	originY   int
 }
 
-// NewPerlinGenerator constructs a perlin generator, rounding the envelope
-// bounds to their nearest integers.
+// NewPerlinGenerator constructs a perlin generator, which can generate perlin
+// noise within the given envelope.
 func NewPerlinGenerator(env geom.Envelope, rnd *rand.Rand) PerlinGenerator {
 	roundedEnv := geom.NewEnvelope(
-		geom.XY{X: math.Round(env.Min().X), Y: math.Round(env.Min().Y)},
-		geom.XY{X: math.Round(env.Max().X), Y: math.Round(env.Max().Y)},
+		geom.XY{X: math.Floor(env.Min().X) - 1, Y: math.Floor(env.Min().Y) - 1},
+		geom.XY{X: math.Ceil(env.Max().X) + 1, Y: math.Ceil(env.Max().Y) + 1},
 	)
-	if roundedEnv.Area() == 0 {
-		panic("envelope has no area")
-	}
 
-	gridw := int(roundedEnv.Max().X) - int(roundedEnv.Min().X)
-	gridh := int(roundedEnv.Max().Y) - int(roundedEnv.Min().Y)
+	gridw := int(roundedEnv.Max().X) - int(roundedEnv.Min().X) + 1
+	gridh := int(roundedEnv.Max().Y) - int(roundedEnv.Min().Y) + 1
 
 	// Create a grid of 2D unit vectors.
 	gradients := make([][]geom.XY, gridw)
 	for i := range gradients {
 		gradients[i] = make([]geom.XY, gridh)
-		for j := range vectors[i] {
+		for j := range gradients[i] {
 			angle := rnd.Float64() * math.Pi * 2
 			gradients[i][j] = geom.XY{
 				X: math.Sin(angle),
@@ -38,33 +37,38 @@ func NewPerlinGenerator(env geom.Envelope, rnd *rand.Rand) PerlinGenerator {
 			}
 		}
 	}
-	return PerlinGenerator{roundedEnv, gradients}
+	return PerlinGenerator{
+		roundedEnv,
+		gradients,
+		int(roundedEnv.Min().X),
+		int(roundedEnv.Min().Y),
+	}
 }
 
 func (p PerlinGenerator) Sample(pt geom.XY) float64 {
-	type intxy struct {
-		x, y int
+	x0 := int(pt.X - p.env.Min().X)
+	x1 := x0 + 1
+	y0 := int(pt.Y - p.env.Min().Y)
+	y1 := y0 + 1
+
+	n0 := p.dotGridGradient(x0, y0, pt)
+	n1 := p.dotGridGradient(x1, y0, pt)
+	n2 := p.dotGridGradient(x0, y1, pt)
+	n3 := p.dotGridGradient(x1, y1, pt)
+
+	sx := pt.X - float64(x0+p.originX)
+	sy := pt.Y - float64(y0+p.originY)
+
+	lerp := func(a, b, w float64) float64 {
+		return (1-w)*a + w*b
 	}
-	a := intxy{int(pt.X), int(pt.Y)}
-	b := intxy{int(pt.X), int(pt.Y) + 1}
-	c := intxy{int(pt.X) + 1, int(pt.Y)}
-	d := intxy{int(pt.X) + 1, int(pt.Y) + 1}
+	return lerp(lerp(n0, n1, sx), lerp(n2, n3, sx), sy)
+}
 
-	ag := p.gradients[a.x][a.y]
-	bg := p.gradients[b.x][b.y]
-	cg := p.gradients[c.x][c.y]
-	dg := p.gradients[d.x][d.y]
-
-	ao := geom.XY{a.X, a.Y}.Sub(pt)
-	bo := geom.XY{b.X, b.Y}.Sub(pt)
-	co := geom.XY{c.X, c.Y}.Sub(pt)
-	do := geom.XY{d.X, d.Y}.Sub(pt)
-
-	adot := ao.Dot(ag)
-	bdot := bo.Dot(bg)
-	cdot := co.Dot(cg)
-	ddot := do.Dot(dg)
-
-	// TODO: lerp between the dot products based on the distance
-
+func (p PerlinGenerator) dotGridGradient(x, y int, pt geom.XY) float64 {
+	distance := geom.XY{
+		X: pt.X - float64(x+p.originX),
+		Y: pt.Y - float64(y+p.originY),
+	}
+	return distance.Dot(p.gradients[x][y])
 }

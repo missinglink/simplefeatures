@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/peterstace/simplefeatures/generate"
+	"github.com/peterstace/simplefeatures/geom"
 )
 
 func main() {
@@ -59,11 +60,32 @@ func generateLines(rnd *rand.Rand, count int) {
 
 func generateLineStrings(rnd *rand.Rand, count int) {
 	for i := 0; i < count; i++ {
-		ls := generate.RandomLineStringRandomWalk(rnd, generate.LineStringSpec{
-			NumPoints: 50,
-			IsClosed:  true,
-			IsSimple:  true,
-		})
+		ls := generate.RegularPolygon(geom.XY{}, 2, 1000).ExteriorRing()
+		env, ok := ls.Envelope()
+		if !ok {
+			panic("no envelope: " + ls.AsText())
+		}
+		perlinX := generate.NewPerlinGenerator(env, rnd)
+		perlinY := generate.NewPerlinGenerator(env, rnd)
+		perlinTransform := func(in geom.XY) geom.XY {
+			return in.Add(geom.XY{
+				X: perlinX.Sample(in),
+				Y: perlinY.Sample(in),
+			}.Scale(2))
+		}
+		g, err := ls.TransformXY(perlinTransform)
+		if err != nil {
+			panic(err)
+		}
+		if !g.IsLineString() {
+			panic("not a line string")
+		}
+		ls = g.AsLineString()
+		//ls := generate.RandomLineStringRandomWalk(rnd, generate.LineStringSpec{
+		//NumPoints: 50,
+		//IsClosed:  true,
+		//IsSimple:  true,
+		//})
 		fmt.Println(ls.AsText())
 	}
 }
