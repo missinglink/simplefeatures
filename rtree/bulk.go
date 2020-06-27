@@ -15,7 +15,9 @@ func BulkLoad(items []BulkItem) *RTree {
 	}
 
 	levels := calculateLevels(len(items))
-	return &RTree{bulkInsert(items, levels)}
+	nodes, root := bulkInsert(items, levels, nil /* TODO: Allocate the right amount of memory */)
+	nodes[root].parent = -1
+	return &RTree{nodes, root}
 }
 
 func calculateLevels(numItems int) int {
@@ -33,16 +35,17 @@ func calculateLevels(numItems int) int {
 	return levels
 }
 
-func bulkInsert(items []BulkItem, levels int) *node {
+func bulkInsert(items []BulkItem, levels int, nodes []node) ([]node, int) {
 	if levels == 1 {
-		root := &node{isLeaf: true, numEntries: len(items)}
+		nodes = append(nodes, node{isLeaf: true, numEntries: len(items)})
+		root := &nodes[len(nodes)-1]
 		for i, item := range items {
 			root.entries[i] = entry{
-				box:      item.Box,
-				recordID: item.RecordID,
+				box:  item.Box,
+				data: item.RecordID,
 			}
 		}
-		return root
+		return nodes, len(nodes) - 1
 	}
 
 	// NOTE: bulk loading is hardcoded around the fact that the min and max
@@ -53,7 +56,7 @@ func bulkInsert(items []BulkItem, levels int) *node {
 	// less than 6 must instead be split into 2 nodes.
 	if len(items) < 6 {
 		firstHalf, secondHalf := splitBulkItems2Ways(items)
-		return bulkNode(levels, firstHalf, secondHalf)
+		return bulkNode(levels, nodes, firstHalf, secondHalf)
 	}
 
 	// 8 is the first number of items that can be split into 4 nodes while
@@ -61,29 +64,26 @@ func bulkInsert(items []BulkItem, levels int) *node {
 	// Anything less that 8 must instead be split into 3 nodes.
 	if len(items) < 8 {
 		firstThird, secondThird, thirdThird := splitBulkItems3Ways(items)
-		return bulkNode(levels, firstThird, secondThird, thirdThird)
+		return bulkNode(levels, nodes, firstThird, secondThird, thirdThird)
 	}
 
 	// 4-way split:
 	firstHalf, secondHalf := splitBulkItems2Ways(items)
 	firstQuarter, secondQuarter := splitBulkItems2Ways(firstHalf)
 	thirdQuarter, fourthQuarter := splitBulkItems2Ways(secondHalf)
-	return bulkNode(levels, firstQuarter, secondQuarter, thirdQuarter, fourthQuarter)
+	return bulkNode(levels, nodes, firstQuarter, secondQuarter, thirdQuarter, fourthQuarter)
 }
 
-func bulkNode(levels int, parts ...[]BulkItem) *node {
-	root := &node{
-		numEntries: len(parts),
-		parent:     nil,
-		isLeaf:     false,
-	}
+func bulkNode(levels int, nodes []node, parts ...[]BulkItem) ([]node, int) {
+	nodes = append(nodes, node{numEntries: len(parts)})
+	root := len(nodes) - 1
 	for i, part := range parts {
-		child := bulkInsert(part, levels-1)
-		child.parent = root
-		root.entries[i].child = child
-		root.entries[i].box = calculateBound(child)
+		var child int
+		nodes, child = bulkInsert(part, levels-1, nodes)
+		nodes[child].parent = root
+		nodes[root].entries[i] = entry{box: calculateBound(&nodes[child]), data: child}
 	}
-	return root
+	return nodes, root
 }
 
 func splitBulkItems2Ways(items []BulkItem) ([]BulkItem, []BulkItem) {

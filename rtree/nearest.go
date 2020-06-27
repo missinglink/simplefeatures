@@ -10,36 +10,41 @@ import "container/heap"
 // the case where the special Stop sentinal error is returned (in which case
 // nil will be returned from PrioritySearch).
 func (t *RTree) PrioritySearch(box Box, callback func(recordID int) error) error {
-	if t.root == nil {
+	if !t.hasRoot() {
 		return nil
 	}
 
 	queue := entriesQueue{origin: box}
 	equeueNode := func(n *node) {
 		for i := 0; i < n.numEntries; i++ {
-			heap.Push(&queue, &n.entries[i])
+			heap.Push(&queue, entryWithChildMarker{&n.entries[i], !n.isLeaf})
 		}
 	}
 
-	equeueNode(t.root)
+	equeueNode(&t.nodes[t.root])
 	for len(queue.entries) > 0 {
-		nearest := heap.Pop(&queue).(*entry)
-		if nearest.child == nil {
-			if err := callback(nearest.recordID); err != nil {
+		nearest := heap.Pop(&queue).(entryWithChildMarker)
+		if !nearest.hasChild {
+			if err := callback(nearest.data); err != nil {
 				if err == Stop {
 					return nil
 				}
 				return err
 			}
 		} else {
-			equeueNode(nearest.child)
+			equeueNode(&t.nodes[nearest.data])
 		}
 	}
 	return nil
 }
 
+type entryWithChildMarker struct {
+	*entry
+	hasChild bool
+}
+
 type entriesQueue struct {
-	entries []*entry
+	entries []entryWithChildMarker
 	origin  Box
 }
 
@@ -58,7 +63,7 @@ func (q *entriesQueue) Swap(i int, j int) {
 }
 
 func (q *entriesQueue) Push(x interface{}) {
-	q.entries = append(q.entries, x.(*entry))
+	q.entries = append(q.entries, x.(entryWithChildMarker))
 }
 
 func (q *entriesQueue) Pop() interface{} {

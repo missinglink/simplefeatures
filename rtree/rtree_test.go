@@ -131,25 +131,26 @@ func randomBox(rnd *rand.Rand, maxStart, maxWidth float64) Box {
 }
 
 func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
-	var recurse func(*node, string)
-	recurse = func(current *node, indent string) {
-		t.Logf("%sNode addr=%p leaf=%t numEntries=%d", indent, current, current.isLeaf, current.numEntries)
+	var recurse func(int, string)
+	recurse = func(currentIdx int, indent string) {
+		current := &rt.nodes[currentIdx]
+		t.Logf("%sNode addr=%d parent=%d leaf=%t numEntries=%d", indent, currentIdx, current.parent, current.isLeaf, current.numEntries)
 		indent += "\t"
 		if current.isLeaf {
 			for i := 0; i < current.numEntries; i++ {
 				e := current.entries[i]
-				t.Logf("%sEntry[%d] recordID=%d box=%v", indent, i, e.recordID, e.box)
+				t.Logf("%sEntry[%d] recordID=%d box=%v", indent, i, e.data, e.box)
 			}
 		} else {
 			for i := 0; i < current.numEntries; i++ {
 				e := &current.entries[i]
 				t.Logf("%sEntry[%d] box=%v", indent, i, e.box)
-				recurse(e.child, indent+"\t")
+				recurse(e.data, indent+"\t")
 			}
 		}
 	}
 	t.Log("---")
-	if rt.root != nil {
+	if rt.hasRoot() {
 		recurse(rt.root, "")
 	} else {
 		t.Log("Root is nil")
@@ -162,8 +163,9 @@ func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
 	}
 
 	leafLevel := -1
-	var check func(n *node, level int)
-	check = func(current *node, level int) {
+	var check func(n int, level int)
+	check = func(currentIdx int, level int) {
+		current := &rt.nodes[currentIdx]
 		if current.isLeaf {
 			if leafLevel == -1 {
 				leafLevel = level
@@ -173,47 +175,41 @@ func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
 
 			for i := 0; i < current.numEntries; i++ {
 				e := current.entries[i]
-				if e.child != nil {
-					t.Fatalf("leaf node has child (entry %d)", i)
-				}
-				if _, ok := unfound[e.recordID]; !ok {
+				if _, ok := unfound[e.data]; !ok {
 					t.Fatal("record ID found in tree but wasn't in unfound map")
 				}
-				delete(unfound, e.recordID)
+				delete(unfound, e.data)
 			}
 		} else {
 			for i := 0; i < current.numEntries; i++ {
 				e := &current.entries[i]
-				if e.recordID != 0 {
-					t.Fatal("non-leaf has recordID")
+				if rt.nodes[e.data].parent != currentIdx {
+					t.Fatalf("node %d has wrong parent", e.data)
 				}
-				if e.child.parent != current {
-					t.Fatalf("node %p has wrong parent", e.child)
-				}
-				box := e.child.entries[0].box
-				for j := 1; j < e.child.numEntries; j++ {
-					box = combine(box, e.child.entries[j].box)
+				box := rt.nodes[e.data].entries[0].box
+				for j := 1; j < rt.nodes[e.data].numEntries; j++ {
+					box = combine(box, rt.nodes[e.data].entries[j].box)
 				}
 				if box != e.box {
 					t.Fatalf("entry box doesn't match smallest box enclosing children")
 				}
-				check(e.child, level+1)
+				check(e.data, level+1)
 			}
 		}
 		for i := current.numEntries; i < len(current.entries); i++ {
 			e := current.entries[i]
-			if e.box != (Box{}) || e.child != nil || e.recordID != 0 {
+			if e.box != (Box{}) || e.data != 0 {
 				t.Fatal("entry past numEntries is not the zero value")
 			}
 		}
-		if current.numEntries > maxChildren || (current != rt.root && current.numEntries < minChildren) {
+		if current.numEntries > maxChildren || (currentIdx != rt.root && current.numEntries < minChildren) {
 			t.Fatalf("%p: unexpected number of entries", current)
 		}
 	}
-	if rt.root != nil {
+	if rt.hasRoot() {
 		check(rt.root, 0)
-		if rt.root.parent != nil {
-			t.Fatalf("root parent should be nil, but is %p", rt.root.parent)
+		if rt.nodes[rt.root].parent != -1 {
+			t.Fatalf("root parent should be -1, but is %d", rt.nodes[rt.root].parent)
 		}
 	}
 
