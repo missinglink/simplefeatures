@@ -10,7 +10,7 @@ import "container/heap"
 // the case where the special Stop sentinal error is returned (in which case
 // nil will be returned from PrioritySearch).
 func (t *RTree) PrioritySearch(box Box, callback func(recordID int) error) error {
-	if !t.hasRoot() {
+	if t.root == 0 {
 		return nil
 	}
 
@@ -21,7 +21,7 @@ func (t *RTree) PrioritySearch(box Box, callback func(recordID int) error) error
 		}
 	}
 
-	equeueNode(&t.nodes[t.root])
+	equeueNode(t.node(t.root))
 	for len(queue.entries) > 0 {
 		nearest := heap.Pop(&queue).(entryWithChildMarker)
 		if !nearest.hasChild {
@@ -32,7 +32,7 @@ func (t *RTree) PrioritySearch(box Box, callback func(recordID int) error) error
 				return err
 			}
 		} else {
-			equeueNode(&t.nodes[nearest.data])
+			equeueNode(t.node(nearest.data))
 		}
 	}
 	return nil

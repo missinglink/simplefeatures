@@ -126,6 +126,7 @@ func TestBulkLoadGolden(t *testing.T) {
 		t.Run(fmt.Sprintf("n=%d", tt.pop), func(t *testing.T) {
 			rnd := rand.New(rand.NewSource(0))
 			rt, _ := testBulkLoad(rnd, tt.pop, 0.9, 0.1)
+			display(t, rt)
 			got := checksum(rt, rt.root)
 			if got != tt.want {
 				t.Errorf("got=%d want=%d", got, tt.want)
@@ -134,14 +135,15 @@ func TestBulkLoadGolden(t *testing.T) {
 	}
 }
 
-func checksum(rt *RTree, n int) uint64 {
+func checksum(rt *RTree, currentIdx int) uint64 {
+	current := rt.node(currentIdx)
 	var entries []string
-	for i := 0; i < rt.nodes[n].numEntries; i++ {
+	for i := 0; i < current.numEntries; i++ {
 		var entry string
-		if rt.nodes[n].isLeaf {
-			entry = strconv.Itoa(rt.nodes[n].entries[i].data)
+		if current.isLeaf {
+			entry = strconv.Itoa(current.entries[i].data)
 		} else {
-			entry = strconv.FormatUint(checksum(rt, rt.nodes[n].entries[i].data), 10)
+			entry = strconv.FormatUint(checksum(rt, current.entries[i].data), 10)
 		}
 		entries = append(entries, entry)
 	}

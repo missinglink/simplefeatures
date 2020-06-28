@@ -15,9 +15,8 @@ func BulkLoad(items []BulkItem) *RTree {
 	}
 
 	levels := calculateLevels(len(items))
-	nodes, root := bulkInsert(items, levels, nil /* TODO: Allocate the right amount of memory */)
-	nodes[root].parent = -1
-	return &RTree{nodes, root}
+	nodes, rootIdx := bulkInsert(items, levels, nil /* TODO: Allocate the right amount of memory */)
+	return &RTree{nodes, rootIdx}
 }
 
 func calculateLevels(numItems int) int {
@@ -38,14 +37,15 @@ func calculateLevels(numItems int) int {
 func bulkInsert(items []BulkItem, levels int, nodes []node) ([]node, int) {
 	if levels == 1 {
 		nodes = append(nodes, node{isLeaf: true, numEntries: len(items)})
-		root := &nodes[len(nodes)-1]
+		rootIdx := len(nodes)
+		root := &nodes[rootIdx-1]
 		for i, item := range items {
 			root.entries[i] = entry{
 				box:  item.Box,
 				data: item.RecordID,
 			}
 		}
-		return nodes, len(nodes) - 1
+		return nodes, rootIdx
 	}
 
 	// NOTE: bulk loading is hardcoded around the fact that the min and max
@@ -76,14 +76,16 @@ func bulkInsert(items []BulkItem, levels int, nodes []node) ([]node, int) {
 
 func bulkNode(levels int, nodes []node, parts ...[]BulkItem) ([]node, int) {
 	nodes = append(nodes, node{numEntries: len(parts)})
-	root := len(nodes) - 1
+	rootIdx := len(nodes)
 	for i, part := range parts {
-		var child int
-		nodes, child = bulkInsert(part, levels-1, nodes)
-		nodes[child].parent = root
-		nodes[root].entries[i] = entry{box: calculateBound(&nodes[child]), data: child}
+		var childIdx int
+		nodes, childIdx = bulkInsert(part, levels-1, nodes)
+		child := &nodes[childIdx-1]
+		child.parent = rootIdx
+		root := &nodes[rootIdx-1]
+		root.entries[i] = entry{box: calculateBound(child), data: childIdx}
 	}
-	return nodes, root
+	return nodes, rootIdx
 }
 
 func splitBulkItems2Ways(items []BulkItem) ([]BulkItem, []BulkItem) {

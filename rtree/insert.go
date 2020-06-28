@@ -12,90 +12,94 @@ const (
 
 // Insert adds a new record to the RTree.
 func (t *RTree) Insert(box Box, recordID int) {
-	if !t.hasRoot() {
+	if t.root == 0 {
 		t.nodes = append(t.nodes, node{isLeaf: true})
-		t.root = len(t.nodes) - 1
+		t.root = len(t.nodes)
 	}
 
 	level := t.nodeDepth(t.root) - 1
-	leaf := t.chooseBestNode(box, level)
+	leafIdx := t.chooseBestNode(box, level)
 
-	t.appendRecord(leaf, box, recordID)
-	t.adjustBoxesUpwards(leaf, box)
+	t.appendRecord(leafIdx, box, recordID)
+	t.adjustBoxesUpwards(leafIdx, box)
 
-	if t.nodes[leaf].numEntries <= maxChildren {
+	if t.node(leafIdx).numEntries <= maxChildren {
 		return
 	}
 
-	newNode := t.splitNode(leaf)
-	root1, root2 := t.adjustTree(leaf, newNode)
-	if root2 != -1 {
+	newNodeIdx := t.splitNode(leafIdx)
+	root1, root2 := t.adjustTree(leafIdx, newNodeIdx)
+	if root2 != 0 {
 		t.joinRoots(root1, root2)
 	}
 }
 
 // adjustBoxesUpwards expands the boxes from the given node all the way to the
 // root by the given box.
-func (t *RTree) adjustBoxesUpwards(node int, box Box) {
-	for node != t.root {
-		parent := t.nodes[node].parent
-		for i := 0; i < t.nodes[parent].numEntries; i++ {
-			e := &t.nodes[parent].entries[i]
-			if e.data == node {
+func (t *RTree) adjustBoxesUpwards(nodeIdx int, box Box) {
+	for nodeIdx != t.root {
+		node := t.node(nodeIdx)
+		parent := t.node(node.parent)
+		for i := 0; i < parent.numEntries; i++ {
+			e := &parent.entries[i]
+			if e.data == nodeIdx {
 				e.box = combine(e.box, box)
 			}
 		}
-		node = parent
+		nodeIdx = node.parent
 	}
 }
 
-func (t *RTree) joinRoots(r1, r2 int) {
+func (t *RTree) joinRoots(root1Idx, root2Idx int) {
 	t.nodes = append(t.nodes, node{
 		entries: [1 + maxChildren]entry{
-			entry{box: calculateBound(&t.nodes[r1]), data: r1},
-			entry{box: calculateBound(&t.nodes[r2]), data: r2},
+			entry{box: calculateBound(t.node(root1Idx)), data: root1Idx},
+			entry{box: calculateBound(t.node(root2Idx)), data: root2Idx},
 		},
 		numEntries: 2,
-		parent:     -1,
+		parent:     0,
 		isLeaf:     false,
 	})
-	newRoot := len(t.nodes) - 1
-	t.nodes[r1].parent = newRoot
-	t.nodes[r2].parent = newRoot
-	t.root = newRoot
+	newRootIdx := len(t.nodes)
+	t.node(root1Idx).parent = newRootIdx
+	t.node(root2Idx).parent = newRootIdx
+	t.root = newRootIdx
 }
 
-// TODO: rename n and nn to leaf and newNode
-func (t *RTree) adjustTree(n, nn int) (int, int) {
+func (t *RTree) adjustTree(leafIdx, newNodeIdx int) (int, int) {
 	for {
-		if n == t.root {
-			return n, nn
+		if leafIdx == t.root {
+			return leafIdx, newNodeIdx
 		}
-		parent := t.nodes[n].parent
-		for i := 0; i < t.nodes[parent].numEntries; i++ {
-			if t.nodes[parent].entries[i].data == n {
-				t.nodes[parent].entries[i].box = calculateBound(&t.nodes[n])
+		leaf := t.node(leafIdx)
+		parent := t.node(leaf.parent)
+		for i := 0; i < parent.numEntries; i++ {
+			if parent.entries[i].data == leafIdx {
+				parent.entries[i].box = calculateBound(leaf)
 				break
 			}
 		}
 
 		// AT4
-		var pp int
-		if nn != -1 {
-			t.appendChild(parent, calculateBound(&t.nodes[nn]), nn)
-			if t.nodes[parent].numEntries > maxChildren {
-				pp = t.splitNode(parent)
+		var splitParentIdx int
+		leafParentIdx := leaf.parent
+		if newNodeIdx != 0 {
+			t.appendChild(leaf.parent, calculateBound(t.node(newNodeIdx)), newNodeIdx)
+			if parent.numEntries > maxChildren {
+				splitParentIdx = t.splitNode(leaf.parent)
 			}
 		}
 
-		n, nn = parent, pp
+		leafIdx, newNodeIdx = leafParentIdx, splitParentIdx
 	}
 }
 
 // splitNode splits node with index n into two nodes. The first node replaces
 // n, and the second node is newly created. The return value is the index of
 // the new node.
-func (t *RTree) splitNode(n int) int {
+func (t *RTree) splitNode(nodeIdx int) int {
+	n := t.node(nodeIdx)
+
 	var (
 		// All zeros would not be valid split, so start at 1.
 		minSplit = uint64(1)
@@ -107,18 +111,18 @@ func (t *RTree) splitNode(n int) int {
 		// 0001, 0010, 0011, 0100, 0101, 0110, 0111.
 		//
 		// (1 << (4 - 1)) - 1 == 0111, so the maths checks out.
-		maxSplit = uint64((1 << (t.nodes[n].numEntries - 1)) - 1)
+		maxSplit = uint64((1 << (n.numEntries - 1)) - 1)
 	)
 	bestArea := math.Inf(+1)
 	var bestSplit uint64
 	for split := minSplit; split <= maxSplit; split++ {
-		if ones := bits.OnesCount64(split); ones < minChildren || (t.nodes[n].numEntries-ones) < minChildren {
+		if ones := bits.OnesCount64(split); ones < minChildren || (n.numEntries-ones) < minChildren {
 			continue
 		}
 		var boxA, boxB Box
 		var hasA, hasB bool
-		for i := 0; i < t.nodes[n].numEntries; i++ {
-			entryBox := t.nodes[n].entries[i].box
+		for i := 0; i < n.numEntries; i++ {
+			entryBox := n.entries[i].box
 			if split&(1<<i) == 0 {
 				if hasA {
 					boxA = combine(boxA, entryBox)
@@ -142,29 +146,31 @@ func (t *RTree) splitNode(n int) int {
 
 	// Use the existing node for the 0 bits in the split, and a new node for
 	// the 1 bits in the split.
-	t.nodes = append(t.nodes, node{isLeaf: t.nodes[n].isLeaf})
-	newNode := len(t.nodes) - 1
-	totalEntries := t.nodes[n].numEntries
-	t.nodes[n].numEntries = 0
+	t.nodes = append(t.nodes, node{isLeaf: n.isLeaf})
+	newNodeIdx := len(t.nodes)
+	newNode := t.node(newNodeIdx)
+	n = t.node(nodeIdx)
+	totalEntries := n.numEntries
+	n.numEntries = 0
 	for i := 0; i < totalEntries; i++ {
-		entry := t.nodes[n].entries[i]
+		entry := n.entries[i]
 		if bestSplit&(1<<i) == 0 {
-			t.nodes[n].entries[t.nodes[n].numEntries] = entry
-			t.nodes[n].numEntries++
+			n.entries[n.numEntries] = entry
+			n.numEntries++
 		} else {
-			t.nodes[newNode].entries[t.nodes[newNode].numEntries] = entry
-			t.nodes[newNode].numEntries++
+			newNode.entries[newNode.numEntries] = entry
+			newNode.numEntries++
 		}
 	}
-	for i := t.nodes[n].numEntries; i < len(t.nodes[n].entries); i++ {
-		t.nodes[n].entries[i] = entry{}
+	for i := n.numEntries; i < len(n.entries); i++ {
+		n.entries[i] = entry{}
 	}
-	if !t.nodes[n].isLeaf {
-		for i := 0; i < t.nodes[newNode].numEntries; i++ {
-			t.nodes[t.nodes[newNode].entries[i].data].parent = newNode
+	if !n.isLeaf {
+		for i := 0; i < newNode.numEntries; i++ {
+			t.node(newNode.entries[i].data).parent = newNodeIdx
 		}
 	}
-	return newNode
+	return newNodeIdx
 }
 
 // chooseBestNode chooses the best node in the tree under which to insert a new
@@ -172,25 +178,26 @@ func (t *RTree) splitNode(n int) int {
 // the tree on which the best node will be found (where the root is at level 0,
 // the nodes under the root are level 1 etc.).
 func (t *RTree) chooseBestNode(box Box, level int) int {
-	node := t.root
+	currentIdx := t.root
 	for {
 		if level == 0 {
-			return node
+			return currentIdx
 		}
-		bestDelta := enlargement(box, t.nodes[node].entries[0].box)
+		current := t.node(currentIdx)
+		bestDelta := enlargement(box, current.entries[0].box)
 		bestEntry := 0
-		for i := 1; i < t.nodes[node].numEntries; i++ {
-			entryBox := t.nodes[node].entries[i].box
+		for i := 1; i < current.numEntries; i++ {
+			entryBox := current.entries[i].box
 			delta := enlargement(box, entryBox)
 			if delta < bestDelta {
 				bestDelta = delta
 				bestEntry = i
-			} else if delta == bestDelta && area(entryBox) < area(t.nodes[node].entries[bestEntry].box) {
+			} else if delta == bestDelta && area(entryBox) < area(current.entries[bestEntry].box) {
 				// Area is used as a tie breaking if the enlargements are the same.
 				bestEntry = i
 			}
 		}
-		node = t.nodes[node].entries[bestEntry].data
+		currentIdx = current.entries[bestEntry].data
 		level--
 	}
 }

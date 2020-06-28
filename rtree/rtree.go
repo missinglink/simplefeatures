@@ -22,24 +22,25 @@ type entry struct {
 }
 
 func (t *RTree) appendRecord(nodeIdx int, box Box, recordID int) {
-	n := &t.nodes[nodeIdx]
-	n.entries[n.numEntries] = entry{box: box, data: recordID}
-	n.numEntries++
+	node := t.node(nodeIdx)
+	node.entries[node.numEntries] = entry{box: box, data: recordID}
+	node.numEntries++
 }
 
 func (t *RTree) appendChild(nodeIdx int, box Box, childIdx int) {
-	node := &t.nodes[nodeIdx]
+	node := t.node(nodeIdx)
 	node.entries[node.numEntries] = entry{box: box, data: childIdx}
 	node.numEntries++
-	t.nodes[childIdx].parent = nodeIdx
+	t.node(childIdx).parent = nodeIdx
 }
 
 // depth calculates the number of layers of nodes in the subtree rooted at the node.
 func (t *RTree) nodeDepth(nodeIdx int) int {
+	node := t.node(nodeIdx)
 	var d = 1
-	for !t.nodes[nodeIdx].isLeaf {
+	for !node.isLeaf {
 		d++
-		nodeIdx = t.nodes[nodeIdx].entries[0].data
+		node = t.node(node.entries[0].data)
 	}
 	return d
 }
@@ -49,12 +50,13 @@ func (t *RTree) nodeDepth(nodeIdx int) int {
 // responsible for storing their own records). Its zero value is an empty
 // R-Tree.
 type RTree struct {
-	nodes []node
+	nodes []node // 1-indexed, allowing 0 to represent "nil"
 	root  int
 }
 
-func (t *RTree) hasRoot() bool {
-	return t.root != -1 && (t.root != 0 || len(t.nodes) != 0)
+// node converts a 1-indexed node index into a node pointer
+func (t *RTree) node(nodeIdx int) *node {
+	return &t.nodes[nodeIdx-1]
 }
 
 // Stop is a special sentinal error that can be used to stop a search operation
@@ -68,7 +70,7 @@ var Stop = errors.New("stop")
 // except for the case where the special Stop sentinal error is returned (in
 // which case nil will be returned from RangeSearch).
 func (t *RTree) RangeSearch(box Box, callback func(recordID int) error) error {
-	if t.root >= len(t.nodes) {
+	if t.root == 0 {
 		return nil
 	}
 	var recurse func(*node) error
@@ -85,21 +87,25 @@ func (t *RTree) RangeSearch(box Box, callback func(recordID int) error) error {
 					return err
 				}
 			} else {
-				if err := recurse(&t.nodes[entry.data]); err != nil {
+				if err := recurse(t.node(entry.data)); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	}
-	return recurse(&t.nodes[t.root])
+	return recurse(t.node(t.root))
 }
 
 // Extent gives the Box that most closely bounds the RTree. If the RTree is
 // empty, then false is returned.
 func (t *RTree) Extent() (Box, bool) {
-	if !t.hasRoot() || t.nodes[t.root].numEntries == 0 {
+	if t.root == 0 {
 		return Box{}, false
 	}
-	return calculateBound(&t.nodes[t.root]), true
+	root := t.node(t.root)
+	if root.numEntries == 0 {
+		return Box{}, false
+	}
+	return calculateBound(root), true
 }

@@ -130,10 +130,10 @@ func randomBox(rnd *rand.Rand, maxStart, maxWidth float64) Box {
 	return box
 }
 
-func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
+func display(t *testing.T, rt *RTree) {
 	var recurse func(int, string)
 	recurse = func(currentIdx int, indent string) {
-		current := &rt.nodes[currentIdx]
+		current := rt.node(currentIdx)
 		t.Logf("%sNode addr=%d parent=%d leaf=%t numEntries=%d", indent, currentIdx, current.parent, current.isLeaf, current.numEntries)
 		indent += "\t"
 		if current.isLeaf {
@@ -150,12 +150,16 @@ func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
 		}
 	}
 	t.Log("---")
-	if rt.hasRoot() {
+	if rt.root != 0 {
 		recurse(rt.root, "")
 	} else {
 		t.Log("Root is nil")
 	}
 	t.Log("---")
+}
+
+func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
+	display(t, rt)
 
 	unfound := make(map[int]struct{})
 	for i := range boxes {
@@ -165,7 +169,7 @@ func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
 	leafLevel := -1
 	var check func(n int, level int)
 	check = func(currentIdx int, level int) {
-		current := &rt.nodes[currentIdx]
+		current := rt.node(currentIdx)
 		if current.isLeaf {
 			if leafLevel == -1 {
 				leafLevel = level
@@ -183,12 +187,13 @@ func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
 		} else {
 			for i := 0; i < current.numEntries; i++ {
 				e := &current.entries[i]
-				if rt.nodes[e.data].parent != currentIdx {
+				child := rt.node(e.data)
+				if child.parent != currentIdx {
 					t.Fatalf("node %d has wrong parent", e.data)
 				}
-				box := rt.nodes[e.data].entries[0].box
-				for j := 1; j < rt.nodes[e.data].numEntries; j++ {
-					box = combine(box, rt.nodes[e.data].entries[j].box)
+				box := child.entries[0].box
+				for j := 1; j < child.numEntries; j++ {
+					box = combine(box, child.entries[j].box)
 				}
 				if box != e.box {
 					t.Fatalf("entry box doesn't match smallest box enclosing children")
@@ -206,10 +211,11 @@ func checkInvariants(t *testing.T, rt *RTree, boxes []Box) {
 			t.Fatalf("%p: unexpected number of entries", current)
 		}
 	}
-	if rt.hasRoot() {
+	if rt.root != 0 {
 		check(rt.root, 0)
-		if rt.nodes[rt.root].parent != -1 {
-			t.Fatalf("root parent should be -1, but is %d", rt.nodes[rt.root].parent)
+		rootParent := rt.node(rt.root).parent
+		if rootParent != 0 {
+			t.Fatalf("root parent should be 0, but is %d", rootParent)
 		}
 	}
 
