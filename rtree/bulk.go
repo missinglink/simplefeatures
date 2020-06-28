@@ -15,7 +15,15 @@ func BulkLoad(items []BulkItem) *RTree {
 	}
 
 	levels := calculateLevels(len(items))
-	nodes, rootIdx := bulkInsert(items, levels, nil /* TODO: Allocate the right amount of memory */)
+
+	var numNodes int
+	for i := 0; i < levels; i++ {
+		numNodes += 1 << (2 * i)
+	}
+
+	nodes := make([]node, 0, numNodes)
+	var rootIdx int
+	nodes, rootIdx = bulkInsert(items, levels, nodes)
 	return &RTree{nodes, rootIdx}
 }
 
