@@ -346,8 +346,8 @@ func TestGraphWithHoles(t *testing.T) {
 
 	CheckDCEL(t, dcel, DCELSpec{
 		NumVerts: 12,
-		NumEdges: 24,
-		NumFaces: 4,
+		NumEdges: 24 + 4,
+		NumFaces: 4 + 1,
 		Faces: []FaceSpec{
 			{
 				// f0
@@ -380,6 +380,12 @@ func TestGraphWithHoles(t *testing.T) {
 				OuterComponent:  []XY{v8, v11, v10, v9},
 				InnerComponents: nil,
 				Label:           inputBPopulated,
+			},
+			{
+				// Ghost face
+				EdgeOrigin: v0,
+				EdgeDestin: v4,
+				Label:      inputBPopulated,
 			},
 		},
 	})

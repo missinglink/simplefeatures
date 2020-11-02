@@ -12,10 +12,13 @@ type doublyConnectedEdgeList struct {
 }
 
 type faceRecord struct {
-	outerComponent   *halfEdgeRecord
+	outerComponent *halfEdgeRecord
+
+	// TODO: can remove these when we're done?
 	innerComponents  []*halfEdgeRecord
 	internalVertices []*vertexRecord // only populated in the overlay
-	label            uint8
+
+	label uint8
 }
 
 type halfEdgeRecord struct {
@@ -80,6 +83,8 @@ func newDCELFromMultiPolygon(mp MultiPolygon, mask uint8) *doublyConnectedEdgeLi
 		label:           populatedMask & mask,
 	}
 	dcel.faces = append(dcel.faces, infFace)
+
+	var ghostFace *faceRecord // face for any ghost edges (populated lazily)
 
 	for polyIdx := 0; polyIdx < mp.NumPolygons(); polyIdx++ {
 		poly := mp.PolygonN(polyIdx)
@@ -178,8 +183,57 @@ func newDCELFromMultiPolygon(mp MultiPolygon, mask uint8) *doublyConnectedEdgeLi
 				newEdges[i*2+1].prev = newEdges[(2*i+3)%numEdges]
 			}
 			dcel.halfEdges = append(dcel.halfEdges, newEdges...)
+
+			if ringIdx > 0 {
+				// TODO: what if linkFrom and linkTo are the same?
+				// TODO: What if the edge already exists?
+
+				// Ghost edges are incident to the ghost face (which is created
+				// lazily). If we don't have a ghost face yet, it's created
+				// now.
+				if ghostFace == nil {
+					ghostFace = &faceRecord{
+						outerComponent:  nil,
+						innerComponents: nil,
+						label:           mask & ^inSetMask,
+					}
+				}
+
+				origin := dcel.vertices[rings[0].GetXY(0)]
+				destin := dcel.vertices[ring.GetXY(0)]
+				ghostFwd := &halfEdgeRecord{
+					origin:   origin,
+					twin:     nil, // populated below
+					incident: ghostFace,
+					next:     nil, // populated below
+					prev:     nil, // populated below
+					label:    mask & ^inSetMask,
+				}
+				ghostRev := &halfEdgeRecord{
+					origin:   destin,
+					twin:     ghostFwd,
+					incident: ghostFace,
+					next:     ghostFwd,
+					prev:     ghostFwd,
+					label:    mask & ^inSetMask,
+				}
+				origin.incidents = append(origin.incidents, ghostFwd)
+				destin.incidents = append(destin.incidents, ghostRev)
+				ghostFwd.twin = ghostRev
+				ghostFwd.next = ghostRev
+				ghostFwd.prev = ghostRev
+				dcel.halfEdges = append(dcel.halfEdges, ghostFwd, ghostRev)
+				// TODO: do we have to 'fix' the vertices?
+			}
 		}
 	}
+
+	// The ghost face is added as the final step so that it appears at the end
+	// of the faces list (this is to help with testing).
+	if ghostFace != nil {
+		dcel.faces = append(dcel.faces, ghostFace)
+	}
+
 	return dcel
 }
 
