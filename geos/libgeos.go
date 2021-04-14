@@ -115,7 +115,36 @@ func Intersects(a, b geom.Geometry) (bool, error) {
 // 2.At least one point of the interior of A lies on the interior of B. That
 // is, they can't *only* intersect at their boundaries.
 func Within(a, b geom.Geometry) (bool, error) {
-	return relate(a, b, "T*F**F***")
+	if a.IsGeometryCollection() || b.IsGeometryCollection() {
+		return false, ErrGeometryCollectionNotSupported
+	}
+
+	h, err := newHandle()
+	if err != nil {
+		return false, err
+	}
+	defer h.release()
+
+	// Not all versions of GEOS can handle Z and M geometries correctly. For
+	// Relates, we only need 2D geometries anyway.
+	a = a.Force2D()
+	b = b.Force2D()
+
+	gh1, err := h.createGeometryHandle(a)
+	if err != nil {
+		return false, err
+	}
+	defer C.GEOSGeom_destroy(gh1)
+
+	gh2, err := h.createGeometryHandle(b)
+	if err != nil {
+		return false, err
+	}
+	defer C.GEOSGeom_destroy(gh2)
+
+	return h.boolErr(C.GEOSWithin_r(
+		h.context, gh1, gh2,
+	))
 }
 
 // CoveredBy returns true if and only if geometry A is covered by geometry B.
