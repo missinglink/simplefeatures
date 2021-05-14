@@ -1,6 +1,7 @@
 package geom_test
 
 import (
+	"os"
 	"strconv"
 	"testing"
 
@@ -116,5 +117,21 @@ func TestSimplifyErrorCases(t *testing.T) {
 			_, err := geom.Simplify(in, tc.threshold)
 			expectErr(t, err)
 		})
+	}
+}
+
+func TestSimplifyReproduceBug(t *testing.T) {
+	buf, err := os.ReadFile("../polygon.geojson")
+	expectNoErr(t, err)
+	input, err := geom.UnmarshalGeoJSON(buf)
+	expectNoErr(t, err)
+
+	t.Log(input.Area())
+
+	result, err := geom.Simplify(input, 1e-5)
+	expectNoErr(t, err)
+
+	if result.IsEmpty() {
+		t.Errorf("Expected not be empty, but got %v", result.AsText())
 	}
 }
