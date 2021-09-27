@@ -158,6 +158,11 @@ func (h *handle) boolErr(c C.char) (bool, error) {
 	}
 }
 
+// doubleErr converts a double result from GEOS into a float64 result.
+func (h *handle) doubleErr(d C.double) (float64, error) {
+	return float64(d), h.err()
+}
+
 func (h *handle) decode(gh *C.GEOSGeometry, opts []geom.ConstructorOption) (geom.Geometry, error) {
 	var (
 		isWKT C.char
