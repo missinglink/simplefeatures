@@ -338,6 +338,9 @@ func MakeValid(g geom.Geometry, opts ...geom.ConstructorOption) (geom.Geometry, 
 
 // -- pj --
 
+// SimplifyPreserveTopology creates a simplified version of a geometry using the
+// Douglas-Peucker algorithm. Will avoid creating derived geometries
+// (polygons in particular) that are invalid.
 func SimplifyPreserveTopology(g geom.Geometry, tolerance float64, opts ...geom.ConstructorOption) (geom.Geometry, error) {
 	result, err := unaryOpG(g, opts, func(ctx C.GEOSContextHandle_t, gh *C.GEOSGeometry) *C.GEOSGeometry {
 		return C.GEOSTopologyPreserveSimplify_r(ctx, gh, C.double(tolerance))
@@ -345,6 +348,8 @@ func SimplifyPreserveTopology(g geom.Geometry, tolerance float64, opts ...geom.C
 	return result, wrap(err, "executing GEOSTopologyPreserveSimplify_r")
 }
 
+// Distance calculates the shortest distance (using the Euclidean metric)
+// between two geometries.
 func Distance(a, b geom.Geometry, opts ...geom.ConstructorOption) (float64, error) {
 	result, err := binaryOpD(a, b, func(ctx C.GEOSContextHandle_t, a, b *C.GEOSGeometry) C.double {
 		var dbl C.double
