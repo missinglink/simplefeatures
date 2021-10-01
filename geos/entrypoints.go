@@ -335,6 +335,7 @@ func MakeValid(g geom.Geometry, opts ...geom.ConstructorOption) (geom.Geometry, 
 		return C.GEOSMakeValid_r(ctx, g)
 	})
 	return result, wrap(err, "executing GEOSMakeValid_r")
+}
 
 // -- pj --
 
@@ -357,4 +358,11 @@ func Distance(a, b geom.Geometry, opts ...geom.ConstructorOption) (float64, erro
 		return dbl
 	})
 	return result, wrap(err, "executing GEOSDistance_r")
+}
+// PointOnSurface
+func PointOnSurface(g geom.Geometry, opts ...geom.ConstructorOption) (geom.Geometry, error) {
+	result, err := unaryOpG(g, opts, func(ctx C.GEOSContextHandle_t, gh *C.GEOSGeometry) *C.GEOSGeometry {
+		return C.GEOSPointOnSurface_r(ctx, gh)
+	})
+	return result, wrap(err, "executing GEOSPointOnSurface_r")
 }
